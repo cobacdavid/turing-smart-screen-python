@@ -420,3 +420,73 @@ class LcdComm(ABC):
                       font=font, fill=font_color)
 
         self.DisplayPILImage(bar_image, xc - radius, yc - radius)
+
+
+    def DisplayNeedle(self, xc, yc, radius,
+                      shape=None,
+                      min_value: int = 0,
+                      max_value: int = 100,
+                      angle_start: int = 0,
+                      angle_end: int = 360,
+                      clockwise: bool = True,
+                      value: int = 50,
+                      text: str = None,
+                      with_text: bool = True,
+                      font: str = "roboto/Roboto-Black.ttf",
+                      font_size: int = 20,
+                      font_color: Tuple[int, int, int] = (0, 0, 0),
+                      bar_color: Tuple[int, int, int] = (0, 0, 0),
+                      background_color: Tuple[int, int, int] = (255, 255, 255),
+                      background_image: str = None):
+        diameter = 2 * radius
+        bbox = (xc - radius, yc - radius, xc + radius, yc + radius)
+        #
+        if background_image is None:
+            # A bitmap is created with solid background
+            bar_image = Image.new('RGB', (diameter, diameter), background_color)
+        else:
+            # A bitmap is created from provided background image
+            bar_image = Image.open(background_image)
+
+            # Crop bitmap to keep only the progress bar background
+            bar_image = bar_image.crop(box=bbox)
+
+        # Draw progress bar
+        pct = (value - min_value)/(max_value - min_value)
+        draw = ImageDraw.Draw(bar_image)
+
+        angle_start %= 361
+        angle_end %= 361
+        #
+        if clockwise:
+            if angle_end < angle_start:
+                ecart = 360 - angle_start + angle_end
+                angleE = angle_start + pct * ecart
+                angleS = angle_start
+            else:
+                ecart = angle_end - angle_start
+                angleS = angle_start
+                angleE = angle_start + pct * ecart
+
+        else:
+            if angle_end < angle_start:
+                ecart = angle_start - angle_end
+                angleE = angle_start
+                angleS = angle_start - pct * ecart
+            else:
+                ecart = 360 - angle_end + angle_start
+                angleS = angle_start - pct * ecart
+                angleE = angle_start
+                
+
+        # Draw text
+        if with_text:
+            if text is None:
+                text = f"{int(pct * 100 + .5):3}%"
+            font = ImageFont.truetype("./res/fonts/" + font, font_size)
+            left, top, right, bottom = font.getbbox(text)
+            w, h = right - left, bottom - top
+            draw.text((radius - w / 2, radius - top - h / 2), text,
+                      font=font, fill=font_color)
+
+        self.DisplayPILImage(bar_image, xc - radius, yc - radius)
