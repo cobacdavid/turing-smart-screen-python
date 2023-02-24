@@ -59,6 +59,10 @@ class LcdComm(ABC):
         # Mutex to protect the queue in case a thread want to add multiple requests (e.g. image data) that should not be
         # mixed with other requests in-between
         self.update_queue_mutex = threading.Lock()
+        self.combo = False
+        self.bg_image = None
+        self.combo_back = None
+        self.combobbox = []
 
     def get_width(self) -> int:
         if self.orientation == Orientation.PORTRAIT or self.orientation == Orientation.REVERSE_PORTRAIT:
@@ -163,6 +167,16 @@ class LcdComm(ABC):
     ):
         pass
 
+    def ComboStart(self, bg):
+        self.bg_image = bg
+        self.combo = True
+
+    def ComboEnd(self):
+        for bbox in self.combobbox:
+            image = self.bg_image.crop(box=bbox)
+            self.DisplayPILImage(image, bbox[0], bbox[1])
+        self.combo = False
+
     def DisplayBitmap(self, bitmap_path: str, x: int = 0, y: int = 0, width: int = 0, height: int = 0):
         image = Image.open(bitmap_path)
         self.DisplayPILImage(image, x, y, width, height)
@@ -196,12 +210,15 @@ class LcdComm(ABC):
         assert font_size > 0, "Font size must be > 0"
 
         if background_image is None:
-            # A text bitmap is created with max width/height by default : text with solid background
-            text_image = Image.new(
-                'RGB',
-                (self.get_width(), self.get_height()),
-                background_color
-            )
+            if not self.combo:
+                # A text bitmap is created with max width/height by default : text with solid background
+                text_image = Image.new(
+                    'RGB',
+                    (self.get_width(), self.get_height()),
+                    background_color
+                )
+            else:
+                text_image = self.bg_image
         else:
             # The text bitmap is created from provided background image : text with transparent background
             text_image = Image.open(background_image)
@@ -221,7 +238,14 @@ class LcdComm(ABC):
             min(y + text_height - top, self.get_height())
         ))
 
-        self.DisplayPILImage(text_image, x, y)
+        if not self.combo:
+            self.DisplayPILImage(text_image, x, y)
+        else:
+            self.combobbox.append((
+                x, y,
+                min(x + text_width - left, self.get_width()),
+                min(y + text_height - top, self.get_height())
+            ))
 
     def DisplayProgressBar(self, x: int, y: int, width: int, height: int, min_value: int = 0, max_value: int = 100,
                            value: int = 50,
@@ -252,8 +276,11 @@ class LcdComm(ABC):
         assert min_value <= value <= max_value, 'Progress bar value shall be between min and max'
 
         if background_image is None:
-            # A bitmap is created with solid background
-            bar_image = Image.new('RGB', (width, height), background_color)
+            if not self.combo:
+                # A bitmap is created with solid background
+                bar_image = Image.new('RGB', (width, height), background_color)
+            else:
+                bar_image = self.bg_image
         else:
             # A bitmap is created from provided background image
             bar_image = Image.open(background_image)
@@ -270,7 +297,10 @@ class LcdComm(ABC):
             # Draw outline
             draw.rectangle([0, 0, width - 1, height - 1], fill=None, outline=bar_color)
 
-        self.DisplayPILImage(bar_image, x, y)
+        if not self.combo:
+            self.DisplayPILImage(bar_image, x, y)
+        else:
+            self.combobbox.append((x, y, x + width, y + height))
 
     def DisplayRadialProgressBar(self, xc: int, yc: int, radius: int, bar_width: int,
                                  min_value: int = 0,
@@ -324,8 +354,11 @@ class LcdComm(ABC):
         bbox = (xc - radius, yc - radius, xc + radius, yc + radius)
         #
         if background_image is None:
-            # A bitmap is created with solid background
-            bar_image = Image.new('RGB', (diameter, diameter), background_color)
+            if not self.combo:
+                # A bitmap is created with solid background
+                bar_image = Image.new('RGB', (diameter, diameter), background_color)
+            else:
+                bar_image = self.bg_image
         else:
             # A bitmap is created from provided background image
             bar_image = Image.open(background_image)
@@ -419,4 +452,7 @@ class LcdComm(ABC):
             draw.text((radius - w / 2, radius - top - h / 2), text,
                       font=font, fill=font_color)
 
-        self.DisplayPILImage(bar_image, xc - radius, yc - radius)
+        if not self.combo:
+            self.DisplayPILImage(bar_image, xc - radius, yc - radius)
+        else:
+            self.combobbox.append(bbox)
