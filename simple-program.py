@@ -36,7 +36,7 @@ COM_PORT = "AUTO"
 
 # Display revision: A or B (for "flagship" version, use B) or SIMU for simulated LCD (image written in screencap.png)
 # To identify your revision: https://github.com/mathoudebine/turing-smart-screen-python/wiki/Hardware-revisions
-REVISION = "A"
+REVISION = "SIMU"
 
 stop = False
 
@@ -122,6 +122,7 @@ if __name__ == "__main__":
 
     # Display the current time and some progress bars as fast as possible
     bar_value = 0
+    #
     while not stop:
         lcd_comm.DisplayText(str(datetime.now().time()), 160, 2,
                              font="roboto/Roboto-Bold.ttf",
@@ -149,22 +150,25 @@ if __name__ == "__main__":
                                           bar_color=(0, 255, 0),
                                           font_color=(255, 255, 255),
                                           background_image=background)
-
+        lcd_comm.ComboStart()
+        temp = 10 * int(bar_value / 10)
         lcd_comm.DisplayRadialProgressBar(222, 320, 40, 13,
                                           min_value=0,
                                           max_value=100,
                                           angle_start=405,
                                           angle_end=135,
+                                          value=temp,
+                                          clockwise=False,
                                           angle_steps=10,
                                           angle_sep=5,
-                                          clockwise=False,
-                                          value=bar_value,
                                           bar_color=(255, 255, 0),
-                                          text=f"{10 * int(bar_value / 10)}°C",
-                                          font="geforce/GeForce-Bold.ttf",
-                                          font_size=20,
-                                          font_color=(255, 255, 0),
-                                          background_image=background)
+                                          )
+        lcd_comm.DisplayText(f"{temp}°C", 162, 300,
+                             font="geforce/GeForce-Bold.ttf",
+                             # font="generale-mono/GeneraleMonoA.ttf",
+                             font_size=50,
+                             font_color=(255, 255, 255))
+        lcd_comm.ComboEnd()
 
         bar_value = (bar_value + 2) % 101
 

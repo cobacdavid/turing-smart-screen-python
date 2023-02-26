@@ -60,7 +60,8 @@ class LcdComm(ABC):
         # mixed with other requests in-between
         self.update_queue_mutex = threading.Lock()
         self.combo = False
-        self.bg_image = None
+        self.background = None
+        self.combo_bg = None
         self.combo_back = None
         self.combobbox = []
 
@@ -167,18 +168,21 @@ class LcdComm(ABC):
     ):
         pass
 
-    def ComboStart(self, bg):
-        self.bg_image = bg
+    def ComboStart(self):
+        self.combo_bg = self.background.copy()
         self.combo = True
 
     def ComboEnd(self):
+        # self.combo_bg.save("/tmp/widget.png")
         for bbox in self.combobbox:
-            image = self.bg_image.crop(box=bbox)
+            image = self.combo_bg.crop(box=bbox)
             self.DisplayPILImage(image, bbox[0], bbox[1])
         self.combo = False
+        self.combobbox = []
 
     def DisplayBitmap(self, bitmap_path: str, x: int = 0, y: int = 0, width: int = 0, height: int = 0):
         image = Image.open(bitmap_path)
+        self.background = image
         self.DisplayPILImage(image, x, y, width, height)
 
     def DisplayText(
@@ -218,11 +222,15 @@ class LcdComm(ABC):
                     background_color
                 )
             else:
-                text_image = self.bg_image
+                text_image = self.combo_bg
         else:
             # The text bitmap is created from provided background image : text with transparent background
             text_image = Image.open(background_image)
 
+        # if not combo : a image crop is done so that we draw at 0, 0
+        # if combo no crop so that we should consider drawing at the right place
+        xoffset = yoffset = 0
+        #
         # Get text bounding box
         font = ImageFont.truetype("./res/fonts/" + font, font_size)
         d = ImageDraw.Draw(text_image)
@@ -231,14 +239,13 @@ class LcdComm(ABC):
         # Draw text with specified color & font, remove left/top margins
         d.text((x - left, y - top), text, font=font, fill=font_color, align=align)
 
-        # Crop text bitmap to keep only the text (also crop if text overflows display)
-        text_image = text_image.crop(box=(
-            x, y,
-            min(x + text_width - left, self.get_width()),
-            min(y + text_height - top, self.get_height())
-        ))
-
         if not self.combo:
+            # Crop text bitmap to keep only the text (also crop if text overflows display)
+            text_image = text_image.crop(box=(
+                x, y,
+                min(x + text_width - left, self.get_width()),
+                min(y + text_height - top, self.get_height())
+            ))
             self.DisplayPILImage(text_image, x, y)
         else:
             self.combobbox.append((
@@ -280,7 +287,7 @@ class LcdComm(ABC):
                 # A bitmap is created with solid background
                 bar_image = Image.new('RGB', (width, height), background_color)
             else:
-                bar_image = self.bg_image
+                bar_image = self.combo_bg
         else:
             # A bitmap is created from provided background image
             bar_image = Image.open(background_image)
@@ -351,20 +358,21 @@ class LcdComm(ABC):
         assert min_value <= value <= max_value, 'Progress bar value shall be between min and max'
 
         diameter = 2 * radius
-        bbox = (xc - radius, yc - radius, xc + radius, yc + radius)
         #
         if background_image is None:
             if not self.combo:
                 # A bitmap is created with solid background
                 bar_image = Image.new('RGB', (diameter, diameter), background_color)
             else:
-                bar_image = self.bg_image
+                bar_image = self.combo_bg
+                bbox = (xc - radius, yc - radius, xc + radius - 1, yc + radius - 1)
         else:
             # A bitmap is created from provided background image
             bar_image = Image.open(background_image)
-
+            bbox = (0, 0, diameter - 1, diameter - 1)
             # Crop bitmap to keep only the progress bar background
             bar_image = bar_image.crop(box=bbox)
+
 
         # Draw progress bar
         pct = (value - min_value)/(max_value - min_value)
@@ -390,21 +398,22 @@ class LcdComm(ABC):
                 else:
                     angleS = angle_start
                     angleE = angle_start + pct * ecart
-                draw.arc([0, 0, diameter - 1, diameter - 1], angleS, angleE,
-                         fill=bar_color, width=bar_width)
+                draw.arc(bbox, angleS, angleE,
+                         fill=bar_color,
+                         width=bar_width)
             # discontinued bar case
             else:
                 angleE = angle_start + pct * ecart
                 angle_complet = ecart / angle_steps
                 etapes = int((angleE - angle_start) / angle_complet)
                 for i in range(etapes):
-                    draw.arc([0, 0, diameter - 1, diameter - 1],
+                    draw.arc(bbox,
                              angle_start + i * angle_complet,
                              angle_start + (i + 1) * angle_complet - angle_sep,
                              fill=bar_color,
                              width=bar_width)
 
-                draw.arc([0, 0, diameter - 1, diameter - 1],
+                draw.arc(bbox,
                          angle_start + etapes * angle_complet,
                          angleE,
                          fill=bar_color,
@@ -422,7 +431,7 @@ class LcdComm(ABC):
                 else:
                     angleS = angle_start - pct * ecart
                     angleE = angle_start
-                draw.arc([0, 0, diameter - 1, diameter - 1], angleS, angleE,
+                draw.arc(bbox, angleS, angleE,
                          fill=bar_color, width=bar_width)
             # discontinued bar case
             else:
@@ -430,27 +439,17 @@ class LcdComm(ABC):
                 angle_complet = ecart / angle_steps
                 etapes = int((angle_start - angleS) / angle_complet)
                 for i in range(etapes):
-                    draw.arc([0, 0, diameter - 1, diameter - 1],
+                    draw.arc(bbox,
                              angle_start - (i + 1) * angle_complet + angle_sep,
                              angle_start - i * angle_complet,
                              fill=bar_color,
                              width=bar_width)
 
-                draw.arc([0, 0, diameter - 1, diameter - 1],
+                draw.arc(bbox,
                          angleS,
                          angle_start - etapes * angle_complet,
                          fill=bar_color,
                          width=bar_width)
-
-        # Draw text
-        if with_text:
-            if text is None:
-                text = f"{int(pct * 100 + .5)}%"
-            font = ImageFont.truetype("./res/fonts/" + font, font_size)
-            left, top, right, bottom = font.getbbox(text)
-            w, h = right - left, bottom - top
-            draw.text((radius - w / 2, radius - top - h / 2), text,
-                      font=font, fill=font_color)
 
         if not self.combo:
             self.DisplayPILImage(bar_image, xc - radius, yc - radius)
